@@ -20,18 +20,30 @@ getUserFromArray = (array, nameOfPropsUser) => {
   }
   return user;
 }
-getArrayUsersFromCsv = (path) => {
-  let csvFile = fs.readFileSync(path).toString().trim();
-  let arrOfRecord = csvFile.split('\n');
-  let nameOfPropsUser = arrOfRecord.shift().split(', ');
-  return arrOfRecord.map(arr => {
-    let arrOfPropUser = arr.split(',');
-    return getUserFromArray(arrOfPropUser, nameOfPropsUser);
-  });
-};
+
+getArrayUsersFromCsv = (path, coding) => {
+
+  return new Promise((res, rej) => {
+    fs.readFile(path, coding, (err, data) => {
+      if (err) {
+        rej(err);
+      } else {
+        let csvFile = data.toString().trim();
+        let arrOfRecord = csvFile.split('\n');
+        let nameOfPropsUser = arrOfRecord.shift().split(', ');
+        users = arrOfRecord.map(arr => {
+          let arrOfPropUser = arr.split(',');
+          return getUserFromArray(arrOfPropUser, nameOfPropsUser);
+        });
+        res(users);
+      }
+    })
+  })
+}
+
 
 module.exports = {
- 
+
   getUsersFromBd(req, res) {
     let jsonUsers = '';
     pool.connect((err, client, done) => {
@@ -41,7 +53,7 @@ module.exports = {
       };
 
       client.query("SELECT * from users", (err, result) => {
-        
+
         if (err) {
           done();
           console.log(err);
@@ -79,51 +91,53 @@ module.exports = {
   },
 
   getUsersFromDisk(req, res) {
-    let users = getArrayUsersFromCsv("newCSV.csv");
-    const textDropTable = "DROP TABLE IF EXISTS users";
-    const createTable = `CREATE TABLE users(
+    getArrayUsersFromCsv('newCSV.csv', 'utf8').then((users) => {
+      const textDropTable = "DROP TABLE IF EXISTS users";
+      const createTable = `CREATE TABLE users(
       Id SERIAL PRIMARY KEY,
       UserName CHARACTER VARYING(30),
       FirstName CHARACTER VARYING(30),
       LastName CHARACTER VARYING(30),
       Age INTEGER
     );`;
-    const textInsert = "INSERT INTO users(username, firstname, lastname, age) VALUES ($1, $2, $3, $4)";
+      const textInsert = "INSERT INTO users(username, firstname, lastname, age) VALUES ($1, $2, $3, $4)";
 
-    pool.connect(function (err, client, done) {
-      if (err) {
-        console.log("not able to get connection " + err);
-        res.status(400).send(err);
-      }
-
-      client.query(textDropTable, function (err, result) {
+      pool.connect(function (err, client, done) {
         if (err) {
-          console.log(err);
+          console.log("not able to get connection " + err);
           res.status(400).send(err);
         }
-        res.status(200);
-      });
-     
-      
-      client.query(createTable, function (err, result) {
-        if (err) {
-          console.log(err);
-          res.status(400).send(err);
-        }
-        res.status(200);
-      });
-      users.forEach(user => {
-        let { UserName, FirstName, LastName, Age } = user;
-        let values = [UserName, FirstName, LastName, Age]
-        client.query(textInsert, values, function (err, result) {
+
+        client.query(textDropTable, function (err, result) {
           if (err) {
             console.log(err);
             res.status(400).send(err);
           }
-          res.status(200)
+          res.status(200);
         });
-      })
-      res.send(`<body><h1>Download users from DB to CSV file!</h1>`)
+
+
+        client.query(createTable, function (err, result) {
+          if (err) {
+            console.log(err);
+            res.status(400).send(err);
+          }
+          res.status(200);
+        });
+        users.forEach(user => {
+          let { UserName, FirstName, LastName, Age } = user;
+          let values = [UserName, FirstName, LastName, Age]
+          client.query(textInsert, values, function (err, result) {
+            if (err) {
+              console.log(err);
+              res.status(400).send(err);
+            }
+            res.status(200)
+          });
+        })
+        res.send(`<body><h1>Download users from CSV file to DB !</h1>`)
+      });
     });
+
   }
 }
